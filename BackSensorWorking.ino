@@ -6,6 +6,8 @@ int msensor = A1;   // Front middle
 int lsensor = A0;   // Front left
 int bmsensor = A3;  // Rear middle sensor
 
+int obstacleSensor = 53;
+
 // Adjust after calibration
 const int blacklevl = 900;   // threshold for detecting black line
 const int backblacklevl = 1000;
@@ -29,6 +31,8 @@ volatile int lineSide = 0; // -1=left, 0=front, +1=right, 99=rear
 unsigned long lastActionTime = 0;
 int currentAction = 0; // 0=forward, 1=backward, 2=right, 3=left, 4=rear detected
 
+volatile bool obstacleDetected = false;
+
 // ---------------- Setup ----------------
 void setup() {
   Serial.begin(9600);
@@ -43,46 +47,55 @@ void setup() {
     pinMode(rightEnPins[i], OUTPUT);
   }
 
+  // Setup sensors
+  pinMode(obstacleSensor, OUTPUT);
+
   // Set PWM resolution for Due (valid)
   analogWriteResolution(8);
 
   // Start timer interrupt — check sensors every 1 ms (1000 µs)
-  Timer3.attachInterrupt(sensorCheck).start(1000);
+  Timer3.attachInterrupt(lineCheck).start(1000);
+  Timer3.attachInterrupt(obstacleCheck).start(1000);
 }
 
 // ---------------- Main Loop ----------------
 void loop() {
-  if (lineDetected) {
-    if (lineSide == 0) {         // Black in front
-      backward();
-      currentAction = 1;
-    } 
-    else if (lineSide < 0) {     // Black left
-      turnright();
-      currentAction = 2;
-    } 
-    else if (lineSide > 0 && lineSide != 99) {  // Black right
-      turnleft();
-      currentAction = 3;
-    } 
-    else if (lineSide == 99) {   // Black detected behind
-      goforward();
-      currentAction = 4;
+  if (obstacleDetected) {
+    if (lineDetected) {
+      if (lineSide == 0) {         // Black in front
+        backward();
+        currentAction = 1;
+      } 
+      else if (lineSide < 0) {     // Black left
+        turnright();
+        currentAction = 2;
+      } 
+      else if (lineSide > 0 && lineSide != 99) {  // Black right
+        turnleft();
+        currentAction = 3;
+      } 
+      else if (lineSide == 99) {   // Black detected behind
+        goforward();
+        currentAction = 4;
+      }
+
+      lastActionTime = millis();
+      lineDetected = false;
     }
 
-    lastActionTime = millis();
-    lineDetected = false;
+    // Resume forward after 400 ms of correction
+    if (millis() - lastActionTime > 400 && currentAction != 0) {
+      goforward();
+      currentAction = 0;
+    }
   }
-
-  // Resume forward after 400 ms of correction
-  if (millis() - lastActionTime > 400 && currentAction != 0) {
-    goforward();
-    currentAction = 0;
+  else {
+    turnright();
   }
 }
 
 // ---------------- Sensor ISR ----------------
-void sensorCheck() {
+void lineCheck() {
   // ---- FRONT SENSORS ----
   int leftVal  = analogRead(lsensor);
   int midVal   = analogRead(msensor);
@@ -113,6 +126,10 @@ void sensorCheck() {
     lineDetected = true;
     lineSide = 99; // special code for rear detection
   }
+}
+
+void obstacleCheck() {
+  obstacleDetected = digitalRead(obstacleSensor);
 }
 
 // ---------------- Motor Control ----------------
