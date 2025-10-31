@@ -1,3 +1,5 @@
+#include "UltrasonicSensor.h"
+
 // Motor pin definitions
 // Left wheels: M1 (front), M2 (back)
 const int leftDirPins[]  = {2, 4};  // DIR pins
@@ -13,6 +15,8 @@ const bool rightInvert[] = {false, false};
 
 const int numLeft  = 2;
 const int numRight = 2;
+
+UltrasonicSensor sensor(2, 3); //Ultrasonic sensor object
 
 void setup() {
   // Initialize pins
@@ -67,6 +71,8 @@ void spinLeft(int speed) {
 }
 
 void loop() {
+  float distance = sensor.getDistance();
+
   // Example: ramp forward
   for(int i = 0; i <= 255; i+=5){ // 2.2 Seconds to reach max speed
     setDrive(i, i);   // move straight forward
