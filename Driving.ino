@@ -71,7 +71,7 @@ void spinLeft(int speed) {
 }
 
 void loop() {
-  float distance = sensor.getDistance();
+  float distance = sensor.getDistance(); //Gets Ultrasonic sensor distance
 
   // Example: ramp forward
   for(int i = 0; i <= 255; i+=5){ // 2.2 Seconds to reach max speed
