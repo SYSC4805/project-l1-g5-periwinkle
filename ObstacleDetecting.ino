@@ -8,6 +8,9 @@ int bmsensor = A3;  // Rear middle sensor
 
 int obstacleSensor = 49;
 
+int trig = 50;
+int echo = A7;
+
 // Adjust after calibration
 const int blacklevl = 800;   // threshold for detecting black line
 const int backblacklevl = 1000;
@@ -28,10 +31,15 @@ const int numRight = 2;
 volatile bool lineDetected = false;
 volatile int lineSide = 0; // -1=left, 0=front, +1=right, 99=rear
 
-unsigned long lastActionTime = 0;
+unsigned long lastLineDetected = 0;
 int currentAction = 0; // 0=forward, 1=backward, 2=right, 3=left, 4=rear detected
 
 volatile int obstacleDetected = false;
+
+volatile float USSdistance = 0.0;
+float distancethresh = 20.0;
+volatile int USSDetected = false;
+float duration;
 
 // ---------------- Setup ----------------
 void setup() {
@@ -52,12 +60,16 @@ void setup() {
 
   // Setup sensors
   pinMode(obstacleSensor, INPUT);
+  pinMode(trig, OUTPUT);
+  pinMode(echo, INPUT);
 
   // Set PWM resolution for Due (valid)
   analogWriteResolution(8);
 
   // Start timer interrupt
   Timer3.attachInterrupt(sensorCheck).start(1000);
+
+  
 }
 
 // ---------------- Main Loop ----------------
@@ -83,19 +95,20 @@ void loop() {
       currentAction = 4;
     }
 
-    lastActionTime = millis();
+    lastLineDetected = millis();
     lineDetected = false;
   }
 
-  // Resume forward after 400 ms of correction
-  if (millis() - lastActionTime > 400 && currentAction != 0) {
-    if(obstacleDetected) {
+  // Resume forward after ms of correction
+  if (millis() - lastLineDetected > 1000 && currentAction != 0) {
+    if(!obstacleDetected) {
+      spinleft();
+    }
+    else if(obstacleDetected && !USSDetected){ // Sees cube and not obstacle
       goforward();
       currentAction = 0;
     }
-    else{
-      spinright();
-    }
+    else {spinright();}
   }
 }
 
@@ -137,15 +150,24 @@ void sensorCheck() {
   // Check obstacle sensor
   static unsigned long lastPrint = 0;
   obstacleDetected = !digitalRead(obstacleSensor);
-  
-  // // Only print every 100ms to prevent serial buffer overflow
-  // if (millis() - lastPrint >= 1000) {
-  //   Serial.println("Front Left: ");
-  //   Serial.println(leftVal);
-  //   Serial.println("Front Right: ");
-  //   Serial.println(rightVal);
-  //   lastPrint = millis();
+
+  // // Reading Ultrasonic
+  // digitalWrite(trig, LOW);
+  // delayMicroseconds(2);
+  // digitalWrite(trig, HIGH);
+  // delayMicroseconds(10);
+  // digitalWrite(trig, LOW);
+
+  // // Measure echo pulse duration (microseconds)
+  // duration = pulseIn(echo, HIGH);
+
+  // // Calculate distance in centimeters (speed of sound = 343 m/s)
+  // USSdistance = (duration * 0.0343) / 2.0;
+
+  // if(USSdistance != 0 && USSdistance<distancethresh) {
+  //   USSDetected = true;
   // }
+
 }
 
 // ---------------- Motor Control ----------------
