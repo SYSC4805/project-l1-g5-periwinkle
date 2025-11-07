@@ -12,8 +12,8 @@ int trig = 50;
 int echo = A7;
 
 // Adjust after calibration
-const int blacklevl = 800;   // threshold for detecting black line
-const int backblacklevl = 1000;
+const int blacklevl = 850;   // threshold for detecting black line
+const int backblacklevl = 1100;
 
 // ---------------- Motor Setup ----------------
 const int leftDirPins[]  = {2, 4};
@@ -37,9 +37,14 @@ int currentAction = 0; // 0=forward, 1=backward, 2=right, 3=left, 4=rear detecte
 volatile int obstacleDetected = false;
 
 volatile float USSdistance = 0.0;
-float distancethresh = 20.0;
+float distancethresh = 9.0;
 volatile int USSDetected = false;
 float duration;
+
+volatile unsigned long echoStart = 0;
+volatile unsigned long echoEnd = 0;
+volatile bool waitingForEcho = false;
+volatile bool measuringEcho = false;
 
 // ---------------- Setup ----------------
 void setup() {
@@ -100,7 +105,7 @@ void loop() {
   }
 
   // Resume forward after ms of correction
-  if (millis() - lastLineDetected > 1000 && currentAction != 0) {
+  if (millis() - lastLineDetected > 600 && currentAction != 0) {
     if(!obstacleDetected) {
       spinleft();
     }
@@ -148,26 +153,51 @@ void sensorCheck() {
   // }
 
   // Check obstacle sensor
-  static unsigned long lastPrint = 0;
   obstacleDetected = !digitalRead(obstacleSensor);
 
-  // // Reading Ultrasonic
-  // digitalWrite(trig, LOW);
-  // delayMicroseconds(2);
-  // digitalWrite(trig, HIGH);
-  // delayMicroseconds(10);
-  // digitalWrite(trig, LOW);
+  // ---------------- Ultrasonic Non-blocking ----------------
+  unsigned long nowMicros = micros();
 
-  // // Measure echo pulse duration (microseconds)
-  // duration = pulseIn(echo, HIGH);
+  // Step 1: If we are not waiting or measuring, start a new ping every ~50ms
+  static unsigned long lastPing = 0;
+  if (!waitingForEcho && !measuringEcho && (millis() - lastPing > 50)) {
+    digitalWrite(trig, HIGH);
+    // we can't use delayMicroseconds(10), so schedule turn-off after 10us
+    waitingForEcho = true;
+    echoStart = nowMicros;  // reuse variable for timing pulse
+    lastPing = millis();
+  }
 
-  // // Calculate distance in centimeters (speed of sound = 343 m/s)
-  // USSdistance = (duration * 0.0343) / 2.0;
+  // Step 2: End trigger pulse after 10us
+  if (waitingForEcho && (nowMicros - echoStart >= 10)) {
+    digitalWrite(trig, LOW);
+    waitingForEcho = false;
+    measuringEcho = true;
+    echoStart = 0;
+    echoEnd = 0;
+  }
 
-  // if(USSdistance != 0 && USSdistance<distancethresh) {
-  //   USSDetected = true;
-  // }
+  // Step 3: While measuring, watch for echo pin transitions
+  if (measuringEcho) {
+    int echoState = digitalRead(echo);
+    if (echoState == HIGH && echoStart == 0) {
+      echoStart = nowMicros; // rising edge
+    } else if (echoState == LOW && echoStart != 0 && echoEnd == 0) {
+      echoEnd = nowMicros;   // falling edge
 
+      unsigned long duration = echoEnd - echoStart;
+      USSdistance = (duration * 0.0343) / 2.0;  // cm
+      USSDetected = (USSdistance > 0 && USSdistance < distancethresh);
+
+      measuringEcho = false; // done
+    }
+
+    // timeout safety (in case echo never returns)
+    if (measuringEcho && (nowMicros - echoStart > 30000)) { // 30ms timeout
+      measuringEcho = false;
+      USSDetected = false;
+    }
+  }
 }
 
 // ---------------- Motor Control ----------------
