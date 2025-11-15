@@ -16,11 +16,11 @@ int trig = 50;
 int echo = A7;
 
 // Adjust after calibration
-const int blacklevl = 850; // threshold for detecting front black line
+const int blacklevl = 830; // threshold for detecting front black line
 const int backblacklevl = 1100;
 
 // Ultrasonic thresholds
-float distancethresh = 9.0;
+float distancethresh = 15.0;
 
 // ---------------- Motor Setup ----------------
 const int leftDirPins[] = {2, 4};
@@ -52,7 +52,9 @@ enum DriveCmd
     CMD_BACK,
     CMD_TURN_L,
     CMD_TURN_R,
-    CMD_STOP
+    CMD_STOP,
+    BACK_RIGHT,
+    BACK_LEFT
 };
 
 QueueHandle_t motorQueue;
@@ -76,6 +78,8 @@ void turnright();
 void turnleft();
 void spinright();
 void spinleft();
+void backRight();
+void backLeft();
 void stopMotors();
 
 // ----------------Setup ----------------
@@ -147,11 +151,22 @@ void lineTask(void *pv) {
         cmd = CMD_BACK;
         bits = EVENT_OUTSIDE;
         lineSide = 0;
-      } else if (leftVal >= blacklevl) {
+      } 
+      else if (midVal >= blacklevl && (leftVal >= blacklevl && rightVal < blacklevl)) {
+        cmd = BACK_RIGHT;
+        bits = EVENT_OUTSIDE;
+        lineSide = -2;
+      } 
+      else if (midVal >= blacklevl && (rightVal >= blacklevl && leftVal < blacklevl)) {
+        cmd = BACK_LEFT;
+        bits = EVENT_OUTSIDE;
+        lineSide = 2;
+      } 
+      else if (rightVal >= blacklevl) {
         cmd = CMD_TURN_R;
         bits = EVENT_OUTSIDE;
         lineSide = -1;
-      } else if (rightVal >= blacklevl) {
+      } else if (leftVal >= blacklevl) {
         cmd = CMD_TURN_L;
         bits = EVENT_OUTSIDE;
         lineSide = 1;
@@ -162,13 +177,13 @@ void lineTask(void *pv) {
       }
       lineDetected = true;
       lastLineDetected = millis();
-    } else if (rearBlack) {
-      // rear boundary detected
-      cmd = CMD_STOP; // we'll use STOP as placeholder; motor task will do spinleft for rear
-      bits = EVENT_OUTSIDE;
-      lineDetected = true;
-      lineSide = 99;
-      lastLineDetected = millis();
+    // }  else if (rearBlack) {
+    //   // rear boundary detected
+    //   cmd = CMD_STOP; // we'll use STOP as placeholder; motor task will do spinleft for rear
+    //   bits = EVENT_OUTSIDE;
+    //   lineDetected = true;
+    //   lineSide = 99;
+    //   lastLineDetected = millis();
     } else {
       // inside safe area
       cmd = CMD_FWD;
@@ -176,12 +191,15 @@ void lineTask(void *pv) {
       lineDetected = false;
       lineSide = 0;
     }
+    
+    // clear 
+    xEventGroupClearBits(zoneEvents, EVENT_INSIDE | EVENT_OUTSIDE);
 
     // publish event & command
     xEventGroupSetBits(zoneEvents, bits);
     xQueueSend(motorQueue, &cmd, 0);
 
-    vTaskDelay(pdMS_TO_TICKS(15)); // about 15ms loop 
+    vTaskDelay(pdMS_TO_TICKS(10)); // about 10ms loop 
   }
 }
 
@@ -223,7 +241,7 @@ void obstacleTask(void *pv) {
       xQueueSend(motorQueue, &cmd, 0);
     }
 
-    vTaskDelay(pdMS_TO_TICKS(60)); // poll ultrasonic at ~60 ms
+    vTaskDelay(pdMS_TO_TICKS(15)); // poll ultrasonic at 15 ms
   }
 }
 
@@ -237,32 +255,43 @@ void motorTask(void *pv) {
   EventBits_t zone;
 
   for (;;) {
-    // Wait for a command (blocks indefinitely)
+    // Wait for a command 
     if (xQueueReceive(motorQueue, &cmd, portMAX_DELAY) == pdTRUE) {
       // Get zone state
       zone = xEventGroupGetBits(zoneEvents);
 
       // 1) If outside: override to back
-      if (zone & EVENT_OUTSIDE) {
-        if (lineSide == 99) {
-          // rear detection: spinleft
-          spinleft();
-          currentAction = 4;
-        } else {
-          // normal outside boundary behavior: back up
+     if (zone & EVENT_OUTSIDE) {
+        if (lineSide == -1) { 
+            turnright(); 
+        } 
+        else if (lineSide == 1) { 
+            turnleft(); 
+        } 
+        else if (lineSide == 99) { 
+            spinleft();
+        } 
+        else if (lineSide == -2){ 
+            backRight(); 
+        }
+        else if (lineSide == 2){ 
+            backLeft(); 
+        }
+        else {
           backward();
-          currentAction = 1;
         }
       } else {
         // 2) If ultrasonic too close: back up
         if (USSDetected) {
           backward();
           currentAction = 1;
+          USSDetected = false;
         } else {
           // 3) If digital obstacleDetected (cube present) and no USS: push forward
           if (obstacleDetected && !USSDetected) {
             goforward();
             currentAction = 0;
+            obstacleDetected = false;
           } else {
             // 4) Otherwise obey command from lineTask
             switch (cmd) {
@@ -285,6 +314,14 @@ void motorTask(void *pv) {
               case CMD_STOP:
                 stopMotors();
                 currentAction = 0;
+                break;
+              case BACK_RIGHT:
+                backRight();
+                currentAction = 1;
+                break;
+              case BACK_LEFT:
+                backLeft();
+                currentAction = 1;
                 break;
               default:
                 goforward();
@@ -324,10 +361,13 @@ void setMotorGroup(const int dirPins[], const int enPins[], const bool invert[],
 }
 
 // ---------------- Movement Functions ----------------
-void goforward() { setDrive(120, 120); }
-void backward()  { setDrive(-150, -150); }
-void turnright() { setDrive(220, 0); }
-void turnleft()  { setDrive(0, 220); }
+void goforward() { setDrive(255, 210); }
+void backward()  { setDrive(-255, -255); }
+void turnright() { setDrive(255, 0); }
+void turnleft()  { setDrive(0, 255); }
 void spinright() { setDrive(150,-150); }
 void spinleft() { setDrive(-150,150); }
+void backRight() {setDrive(-150, -255);}
+void backLeft() {setDrive(-255, -150);}
 void stopMotors() { setDrive(0, 0); }
+
