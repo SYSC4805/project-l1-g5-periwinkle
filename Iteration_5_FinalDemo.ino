@@ -45,7 +45,6 @@ const int numRight = 2;
 // ---------------- Control State ----------------
 volatile int lineSide = 0; // -1=left, 0=front, +1=right, 99=rear
 
-
 volatile int obstacleDetected = false;
 
 volatile float USSdistance_m = 0.0;
@@ -171,12 +170,13 @@ void lineTask(void *pv)
         bool frontBlack = (leftVal >= blacklevl || midVal >= blacklevl || rightVal >= blacklevl);
         bool rearBlack = (backVal >= backblacklevl);
 
+        // Debugging for calibration of line follower sensor
         Serial.println("Left Val ");
         Serial.print(leftVal);
         Serial.println("Right Val ");
         Serial.print(rightVal);
 
-        Serial.println("Middle Val ");
+        Serial.println("Middle Val");
         Serial.print(midVal);
 
         if (frontBlack)
@@ -188,24 +188,28 @@ void lineTask(void *pv)
                 bits = EVENT_OUTSIDE;
                 lineSide = 0;
             }
+            // boundary on left
             else if (midVal >= blacklevl && (leftVal >= blacklevl && rightVal < blacklevl))
             {
                 cmd = BACK_RIGHT;
                 bits = EVENT_OUTSIDE;
                 lineSide = -2;
             }
+            // boundary on right
             else if (midVal >= blacklevl && (rightVal >= blacklevl && leftVal < blacklevl))
             {
                 cmd = BACK_LEFT;
                 bits = EVENT_OUTSIDE;
                 lineSide = 2;
             }
+            // boundary on right only
             else if (rightVal >= blacklevl)
             {
                 cmd = CMD_TURN_R;
                 bits = EVENT_OUTSIDE;
                 lineSide = -1;
             }
+            // boundary on left only 
             else if (leftVal >= blacklevl)
             {
                 cmd = CMD_TURN_L;
@@ -218,12 +222,13 @@ void lineTask(void *pv)
                 bits = EVENT_OUTSIDE;
                 lineSide = 0;
             }
-            }  else if (rearBlack) {
-              // rear boundary detected
-              cmd = CMD_FWD;
-              bits = EVENT_OUTSIDE;
-              lineSide = 99;
-            }
+        }
+        else if (rearBlack)
+        {
+            // rear boundary detected
+            cmd = CMD_FWD;
+            bits = EVENT_OUTSIDE;
+            lineSide = 99;
         }
         else
         {
@@ -240,7 +245,7 @@ void lineTask(void *pv)
         xEventGroupSetBits(zoneEvents, bits);
         xQueueSend(motorQueue, &cmd, 0);
 
-        vTaskDelay(pdMS_TO_TICKS(7)); // about 10ms loop
+        vTaskDelay(pdMS_TO_TICKS(7)); // timeout every 7ms
     }
 }
 
@@ -335,7 +340,7 @@ void obstacleTask(void *pv)
         // Serial.print(" cm | Detected: ");
         // Serial.println(USSDetected_l);
 
-        vTaskDelay(pdMS_TO_TICKS(10)); // slower print rate (100 ms)
+        vTaskDelay(pdMS_TO_TICKS(10)); // timeout every 10ms
     }
 }
 
@@ -354,7 +359,7 @@ void motorTask(void *pv)
 
             if (zone & EVENT_OUTSIDE)
             {
-                // Outside -> override
+                // Outside -> override any command
                 if (lineSide == -1)
                     turnright();
                 else if (lineSide == 1)
