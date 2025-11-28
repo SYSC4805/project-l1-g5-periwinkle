@@ -11,7 +11,6 @@ int obstacleSensor = 49;
 int trig = 50;
 int echo = A7;
 
-// Adjust after calibration
 const int blacklevl = 850;   // threshold for detecting black line
 const int backblacklevl = 1100;
 
