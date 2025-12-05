@@ -67,8 +67,8 @@ enum DriveCmd
     BACK_LEFT,
 };
 
-QueueHandle_t motorQueue;
-EventGroupHandle_t zoneEvents;
+QueueHandle_t motorQueue; // queue to hold the motor commands
+EventGroupHandle_t zoneEvents; //handle outisde and inside boundary events
 
 // EventGroup bits
 #define EVENT_INSIDE (1 << 0)
@@ -461,9 +461,9 @@ void motorTask(void *pv)
                     }
                 }
             }
-            WDT_Restart(WDT);
+            WDT_Restart(WDT); // restart watchdig timer if it hangs
         }
-        vTaskDelay(pdMS_TO_TICKS(5));
+        vTaskDelay(pdMS_TO_TICKS(5)); //timeout every 5ms
     }
 }
 
